@@ -11,11 +11,12 @@ from google.api_core import timeout as timeout_
 from google.cloud import compute_v1
 
 # load_dotenv()
-REPOSITORY = os.getenv('REPOSITORY', "default")
-IMAGE_NAME = os.getenv('IMAGE_NAME', "default")
-TAG = os.getenv('TAG', "default")
+# MARK: 환경변수 설정
+REPOSITORY = os.getenv('REPOSITORY', "ket0825")
+IMAGE_NAME = os.getenv('IMAGE_NAME', "batch-gpu")
+TAG = os.getenv('TAG', "latest")
 VPC_NAME = os.getenv('VPC_NAME', "default")
-PROJECT_ID = os.getenv('PROJECT_ID', "default")
+PROJECT_ID = os.getenv('PROJECT_ID', "batch-gpu-sample")
 ZONES = os.getenv('ZONES', "northamerica-northeast1-c,southamerica-east1-a,southamerica-east1-c,us-central1-a,us-central1-b,us-central1-c,us-central1-f,us-east1-c,us-east1-d,us-east4-a,us-east4-b,us-east4-c,us-west1-a,us-west1-b,us-west2-b,us-west2-c,us-west3-b,us-west4-a,us-west4-b")
 
 # 커스텀 재시도 정책 정의 (재시도 없음)
@@ -165,109 +166,14 @@ def create_gpu_job(project_id, zones:List[str], new_template, env_vars:dict):
 
     print("env_vars:", env_vars.items())
       
-    images_uri = f'asia-northeast3-docker.pkg.dev/{project_id}/{REPOSITORY}/{IMAGE_NAME}:{TAG}'    
-
-    task_group = batch_v1.TaskGroup()
-    task_spec = batch_v1.TaskSpec()
+    # images_uri = f'asia-northeast3-docker.pkg.dev/{project_id}/{REPOSITORY}/{IMAGE_NAME}:{TAG}'    
+    images_uri = f'{REPOSITORY}/{IMAGE_NAME}:{TAG}'        
     
-    # spec for task. Do not over InstanceTemplate
-    compute_resource = batch_v1.ComputeResource()
-    compute_resource.cpu_milli = 2000
-    compute_resource.memory_mib = 7500
-    
-    runnables = batch_v1.Runnable()
-    runnables.environment.variables = env_vars
-    runnables.container = batch_v1.Runnable.Container()
-    runnables.container.image_uri = images_uri
-    task_spec.runnables = [runnables]
-    
-    allocation_policy = batch_v1.AllocationPolicy()    
-    instances = batch_v1.AllocationPolicy.InstancePolicyOrTemplate()    
-    if new_template:
-        instances.instance_template = new_template
-    
-    # MARK: InstanceTemplate 미사용으로 주석 처리    
-    # policy = batch_v1.AllocationPolicy.InstancePolicy()
-    # policy.machine_type = 'n1-standard-4'
-    # policy.boot_disk.type_ = 'pd-ssd'
-    # policy.boot_disk.size_gb = 50
-    # policy.provisioning_model = 'SPOT'    
-    
-    # accelerators = batch_v1.AllocationPolicy.Accelerator()
-    # accelerators.type_ = 'nvidia-tesla-t4'
-    # accelerators.count = 1
-    # policy.accelerators = [accelerators]    
-    
-    location = batch_v1.AllocationPolicy.LocationPolicy()    
-    location.allowed_locations = [f"zones/{zone}" for zone in zones]
-    
-    allocation_policy.instances = [instances]
-    allocation_policy.location = location
-    
-    logs_policy = batch_v1.LogsPolicy()
-    logs_policy.destination = 'CLOUD_LOGGING'
-    
-    network_policy = batch_v1.AllocationPolicy.NetworkPolicy()
-    
-    network_interface = batch_v1.AllocationPolicy.NetworkInterface()    
-    network_interface.network = f'projects/{project_id}/global/networks/default'    
-    network_interface.subnetwork = f'projects/{project_id}/regions/{region}/subnetworks/default'
-        
-    network_policy.network_interfaces = [network_interface]
-    
-    allocation_policy.network = network_policy
-    
-    # 기존: OS 차이로 인한 이슈 발생
-    # job = {
-    #     "task_groups":[
-    #         {
-    #             "task_spec":{
-    #                 "runnables": [{                        
-    #                     # cloud-init을 대신 주입함
-    #                     # "environment": {
-    #                     #         "variables": env_vars
-    #                     #     },
-    #                     "container": {
-    #                         "image_uri": images_uri,                                                                                                                                         
-    #                     }
-    #                 }],                   
-    #                 # Should be compatible with instance_template             
-    #                 "compute_resource": { 
-    #                     "cpu_milli": 2000,
-    #                     "memory_mib": 7500,
-    #                 },
-    #             },
-    #             "task_count": 1,
-    #             "parallelism": 1            
-    #         },            
-    #     ],
-    #     "allocation_policy": {
-    #         "instances": [                
-    #             { 
-    #                 "instance_template": new_template,                    
-    #             }
-    #         ],
-    #         "location": {
-    #             "allowed_locations": [f"zones/{zone}" for zone in zones] # multi-zone
-    #                 # [f"zones/{zone}"]                    
-    #         },
-    #         "network": {
-    #             "network_interfaces": [
-    #                 {
-    #                     "network": f'projects/{project_id}/global/networks/{VPC_NAME}',
-    #                     "subnetwork": f'projects/{project_id}/regions/{region}/subnetworks/default'
-    #                 }
-    #             ]
-    #         },
-    #     },
-    #     "logs_policy": {
-    #         "destination": "CLOUD_LOGGING",
-    #     }
-    # }           
-    
-    # NEW: cloud-init 미주입
+    # 기본 옵션    
     nvidia_gpu_options = "--volume /var/lib/nvidia/lib64:/usr/local/nvidia/lib64 --volume /var/lib/nvidia/bin:/usr/local/nvidia/bin --device /dev/nvidia0:/dev/nvidia0 --device /dev/nvidia-uvm:/dev/nvidia-uvm --device /dev/nvidiactl:/dev/nvidiactl -e NVIDIA_VISIBLE_DEVICES=all -e NVIDIA_DRIVER_CAPABILITIES=all --env LD_LIBRARY_PATH=/usr/local/nvidia/lib64"
+    # transformer 옵션
     transformers_module_options = "-e TRANSFORMERS_CACHE=/app"
+    # 사용자 정의 옵션 (환경변수 포함)
     custom_options = " ".join([f"-e {k}={v}" for k, v in env_vars.items()])
     options = f"{nvidia_gpu_options} {transformers_module_options} {custom_options}"
     job = {
@@ -278,7 +184,7 @@ def create_gpu_job(project_id, zones:List[str], new_template, env_vars:dict):
                         # cloud-init을 대신 주입함. X
                         # "environment": {
                         #         "variables": env_vars
-                        #     },s
+                        #     },
                         
                         # 그냥 아래처럼 넣어서 하면 됨. env_vars를 같이 넣어서 사용하자.
                         "container": {
@@ -301,9 +207,9 @@ def create_gpu_job(project_id, zones:List[str], new_template, env_vars:dict):
         "allocation_policy": {
             "instances": [
             {
-                "install_gpu_drivers": True,
+                "install_gpu_drivers": True, # GPU 드라이버 설치
                 "policy": {
-                    # "provisioning_model": "SPOT",
+                    "provisioning_model": "SPOT", # SPOT or STANDARD
                     "machine_type": "n1-standard-2",
                     "accelerators": [
                         {
@@ -335,18 +241,6 @@ def create_gpu_job(project_id, zones:List[str], new_template, env_vars:dict):
         }
     }            
     
-    # job = batch_v1.Job()
-    # job.task_groups = [task_group]
-    # job.allocation_policy = allocation_policy
-    # job.logs_policy = logs_policy
-    
-    # create_request = batch_v1.CreateJobRequest()
-    # create_request.parent = f'projects/{project_id}/locations/{zone}'
-    # create_request.job = job            
-    
-    
-    # 여기서 metadata 등록 가능...
-    # response = client.create_job(request=create_request, metadata=metadata)    
     parent = f'projects/{project_id}/locations/{region}'
     
     response = client.create_job(
@@ -363,6 +257,7 @@ def check_resource_errors(status_events):
         "CODE_GCE_ZONE_RESOURCE_POOL_EXHAUSTED",
         "does not have enough resources available",
         "inadequate quotas",
+        "Error",
     ]
     
     for event in status_events:
@@ -424,8 +319,7 @@ def deploy_review_jobs():
     
     for region, zones in region_to_zones.items():
         print(f"Deploying to region: {region}")
-        new_template = clone_template_with_new_network(PROJECT_ID, "batch-kluebert-ocr-template", region, env_vars)
-        new_template = None
+        new_template = clone_template_with_new_network(PROJECT_ID, "template-batch-gpu", region, env_vars) # 제작한 인스턴스 템플릿 이름
         try:
             job = create_gpu_job(PROJECT_ID, zones, new_template, env_vars)
             if wait_until_job(job.name, new_template):
@@ -435,11 +329,11 @@ def deploy_review_jobs():
                 print(f"Job failed. Move to the next region from {region}.")        
         except Exception as e:
             print(f"Error deploying to region {region}: {str(e)}")
-            # delete_template(PROJECT_ID, new_template)
+            delete_template(PROJECT_ID, new_template)
             continue
-        # finally:
-        #     # clean up
-        #     delete_template(PROJECT_ID, new_template)
+        finally:
+            # clean up
+            delete_template(PROJECT_ID, new_template)
             
     
 
