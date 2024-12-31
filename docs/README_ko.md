@@ -1,7 +1,11 @@
 ## GCP Batch Job with GPU in Multiple Regions example
 
 ### Prerequisites
-1. 기본 VPC 네트워크 생성 (default)
+1. default VPC 네트워크 생성 (사용자 VPC 사용 시, 기본 VPC와 VPC 피어링 혹은 NAT 게이트웨이 사용)
+   
+   **TIP**
+   > 간단한 사용을 위해 기본 VPC 네트워크 사용
+   
 2. 서비스 계정 및 권한 설정 (콘솔에서 API 사용 허가 필요)
    ```bash
    VPC, Compute Engine, Batch API 콘솔에서 사용 허가하기

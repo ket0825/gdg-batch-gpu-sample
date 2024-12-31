@@ -2,8 +2,13 @@
 
 *Read this in other languages: [한국어](docs/README_ko.md)*
 
+
 ### Prerequisites
-1. Create a default VPC network
+1. Create a default VPC network (IF YOU WANT TO USE WITH YOUR OWN VPC, USE VPC PEERING WITH DEFAULT VPC or USE NAT GATEWAY)
+    
+    **TIP**
+    > Use the default VPC network for simplicity
+
 2. Set up service account and permissions (API activation required in console)
 
     **TIP**
